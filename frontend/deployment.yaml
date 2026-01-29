@@ -4,7 +4,7 @@ metadata:
   name: frontend
   namespace: three-tier
   annotations:
-    argocd.argoproj.io/sync-wave: "1" 
+    argocd.argoproj.io/sync-wave: "2" 
   labels:
     role: frontend
     env: production
@@ -28,7 +28,7 @@ spec:
       serviceAccountName: frontend-sa
       containers:
       - name: frontend
-        image: us-central1-docker.pkg.dev/round-centaur-477210-k3/ankur/frontend:1.0
+        image: us-central1-docker.pkg.dev/round-centaur-477210-k3/ankur/frontend:1.0.1
         imagePullPolicy: IfNotPresent
         env:
           

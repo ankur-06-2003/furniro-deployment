@@ -29,12 +29,12 @@ spec:
       serviceAccountName: backend-sa
       containers:
       - name: api
-        image: us-central1-docker.pkg.dev/round-centaur-477210-k3/ankur/backend:1.0
+        image: us-central1-docker.pkg.dev/round-centaur-477210-k3/ankur/backend:1.0.1
         imagePullPolicy: IfNotPresent
         env:
           # MongoDB Connection
           - name: MONGODB_URI
-            value: "mongodb://$(MONGO_USERNAME):$(MONGO_PASSWORD)@mongodb-svc:27017/furniro?authSource=admin"
+            value: "mongodb://mongodb-svc:27017/furniro?authSource=admin"
           - name: MONGO_USERNAME
             valueFrom:
               secretKeyRef:
