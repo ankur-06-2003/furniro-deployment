@@ -1,0 +1,131 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: three-tier
+  labels:
+    role: api
+    env: production
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      role: api
+  template:
+    metadata:
+      labels:
+        role: api
+    spec:
+      imagePullSecrets:
+      - name:  gcp-registry-secret
+      serviceAccountName: backend-sa
+      containers:
+      - name: api
+        image: us-central1-docker.pkg.dev/round-centaur-477210-k3/ankur/backend:1.0
+        imagePullPolicy: IfNotPresent
+        env:
+          # MongoDB Connection
+          - name: MONGODB_URI
+            value: "mongodb://$(MONGO_USERNAME):$(MONGO_PASSWORD)@mongodb-svc:27017/furniro?authSource=admin"
+          - name: MONGO_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: mongo-sec
+                key: username
+          - name: MONGO_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mongo-sec
+                key: password
+          
+          # App Configuration
+          - name: NODE_ENV
+            valueFrom:
+              secretKeyRef:
+                name: app-secrets
+                key: NODE_ENV
+          
+          - name: PORT
+            value: "8000"
+          
+          # JWT Configuration
+          - name: JWT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: app-secrets
+                key: JWT_SECRET
+          
+          # Frontend URL for CORS
+          - name: FRONTEND_URL
+            valueFrom:
+              secretKeyRef:
+                name: app-secrets
+                key: FRONTEND_URL
+          
+          # Cloudinary Configuration
+          - name: CLOUDINARY_CLOUD_NAME
+            valueFrom:
+              secretKeyRef:
+                name: app-secrets
+                key: CLOUDINARY_CLOUD_NAME
+          
+          - name: CLOUDINARY_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: app-secrets
+                key: CLOUDINARY_API_KEY
+        
+        ports:
+        - containerPort: 8000
+          name: http
+        
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        
+        # securityContext:
+        #   runAsNonRoot: true
+        #   runAsUser: 1000
+        #   allowPrivilegeEscalation: false
+        #   readOnlyRootFilesystem: true
+        #   capabilities:
+        #     drop:
+        #       - ALL
+        
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      
+      volumes:
+      - name: tmp
+        emptyDir: {}

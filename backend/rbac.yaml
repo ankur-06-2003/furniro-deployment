@@ -1,0 +1,89 @@
+---
+# Backend ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: three-tier
+  name: backend-sa
+  labels:
+    app: api
+
+---
+# Frontend ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: three-tier
+  name: frontend-sa
+  labels:
+    app: frontend
+
+---
+# Backend Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: three-tier
+  name: backend-role
+  labels:
+    app: api
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+
+---
+# Frontend Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: three-tier
+  name: frontend-role
+  labels:
+    app: frontend
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+
+---
+# Backend RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: three-tier
+  name: backend-rolebinding
+  labels:
+    app: api
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: backend-role
+subjects:
+- kind: ServiceAccount
+  name: backend-sa
+  namespace: three-tier
+
+---
+# Frontend RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: three-tier
+  name: frontend-rolebinding
+  labels:
+    app: frontend
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: frontend-role
+subjects:
+- kind: ServiceAccount
+  name: frontend-sa
+  namespace: three-tier

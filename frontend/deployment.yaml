@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: three-tier
+  annotations:
+    argocd.argoproj.io/sync-wave: "1" 
+  labels:
+    role: frontend
+    env: production
+spec: 
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels: 
+      role: frontend
+  template:
+    metadata:
+      labels:
+        role: frontend
+    spec: 
+      imagePullSecrets:
+      - name:  gcp-registry-secret
+      serviceAccountName: frontend-sa
+      containers:
+      - name: frontend
+        image: us-central1-docker.pkg.dev/round-centaur-477210-k3/ankur/frontend:1.0
+        imagePullPolicy: IfNotPresent
+        env:
+          
+          - name: NEXT_PUBLIC_API_URL
+            value: "http://api-svc.three-tier.svc.cluster.local:8000/api"  # Update to your domain
+        
+        ports:
+        - containerPort: 3000
+          name: http
+        
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        
+        # securityContext:
+        #   runAsNonRoot: true
+        #   runAsUser: 1000
+        #   allowPrivilegeEscalation: false
+        #   readOnlyRootFilesystem: true
+        #   capabilities:
+        #     drop:
+        #       - ALL
+
