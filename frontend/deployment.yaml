@@ -28,7 +28,7 @@ spec:
       serviceAccountName: frontend-sa
       containers:
       - name: frontend
-        image: us-central1-docker.pkg.dev/round-centaur-477210-k3/ankur/furniro-frontend:1.0.1
+        image: us-central1-docker.pkg.dev/round-centaur-477210-k3/ankur/furniro-frontend:1.0.2
         imagePullPolicy: IfNotPresent
         env:
           
