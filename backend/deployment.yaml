@@ -10,7 +10,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
 
 spec:
-  replicas: 3
+  replicas: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -29,7 +29,7 @@ spec:
       serviceAccountName: backend-sa
       containers:
       - name: api
-        image: us-central1-docker.pkg.dev/round-centaur-477210-k3/ankur/furniro-backend:1.0.2
+        image: us-central1-docker.pkg.dev/round-centaur-477210-k3/ankur/furniro-backend:1.0.5
         imagePullPolicy: IfNotPresent
         env:
           # MongoDB Connection
@@ -90,10 +90,10 @@ spec:
         resources:
           requests:
             memory: "256Mi"
-            cpu: "250m"
+            cpu: "100m"
           limits:
             memory: "512Mi"
-            cpu: "500m"
+            cpu: "200m"
         
         livenessProbe:
           httpGet:
