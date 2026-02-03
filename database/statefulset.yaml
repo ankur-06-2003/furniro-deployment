@@ -1,61 +1,50 @@
 apiVersion: apps/v1
 kind: StatefulSet
-metadata: 
-  namespace: three-tier
+metadata:
   name: mongodb
+  namespace: three-tier
   labels:
     app: mongodb
     env: production
   annotations:
-    argocd.argoproj.io/sync-wave: "1" 
-spec: 
+    argocd.argoproj.io/sync-wave: "1"
+
+spec:
+  serviceName: mongodb-svc
   replicas: 1
+
   selector:
     matchLabels:
       app: mongodb
+
   template:
     metadata:
-      labels: 
+      labels:
         app: mongodb
     spec:
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: app
-                  operator: In
-                  values:
-                  - mongodb
-              topologyKey: kubernetes.io/hostname
-      
-      # securityContext:
-      #   fsGroup: 999
-      
       containers:
       - name: mongodb
         image: mongo:7.0
         imagePullPolicy: IfNotPresent
+
         ports:
         - containerPort: 27017
           name: mongodb
-        
-        env: 
-          - name: MONGO_INITDB_ROOT_USERNAME
-            valueFrom:
-              secretKeyRef:
-                name: mongo-sec
-                key: username
-          - name: MONGO_INITDB_ROOT_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: mongo-sec
-                key: password
-          - name: MONGO_INITDB_DATABASE
-            value: furniro
-        
+
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mongo-sec
+              key: username
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mongo-sec
+              key: password
+        - name: MONGO_INITDB_DATABASE
+          value: furniro
+
         resources:
           requests:
             memory: "512Mi"
@@ -63,50 +52,47 @@ spec:
           limits:
             memory: "1Gi"
             cpu: "500m"
-        
+
+        volumeMounts:
+        - name: mongo-data
+          mountPath: /data/db
+
         livenessProbe:
           exec:
             command:
-              - /bin/sh
-              - -c
-              - mongosh --eval "db.adminCommand('ping')" --quiet
+            - /bin/sh
+            - -c
+            - |
+              mongosh \
+              --username "$MONGO_INITDB_ROOT_USERNAME" \
+              --password "$MONGO_INITDB_ROOT_PASSWORD" \
+              --authenticationDatabase admin \
+              --eval "db.adminCommand('ping')" \
+              --quiet
           initialDelaySeconds: 30
           periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        
+
         readinessProbe:
           exec:
             command:
-              - /bin/sh
-              - -c
-              - mongosh --eval "db.adminCommand('ping')" --quiet
+            - /bin/sh
+            - -c
+            - |
+              mongosh \
+              --username "$MONGO_INITDB_ROOT_USERNAME" \
+              --password "$MONGO_INITDB_ROOT_PASSWORD" \
+              --authenticationDatabase admin \
+              --eval "db.adminCommand('ping')" \
+              --quiet
           initialDelaySeconds: 10
           periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 2
-        
-        # securityContext:
-        #   runAsNonRoot: true
-        #   runAsUser: 999
-        #   allowPrivilegeEscalation: false
-        #   readOnlyRootFilesystem: false
-        #   capabilities:
-        #     drop:
-        #       - ALL
-        
-        volumeMounts:
-          - name: mongo-volume
-            mountPath: /data/db
-          - name: mongo-config
-            mountPath: /etc/mongod
-      
-      volumes: 
-      - name: mongo-volume
-        persistentVolumeClaim:
-          claimName: mongo-volume-claim
-      
-      - name: mongo-config
-        configMap:
-          name: mongo-config
-          optional: true
+
+  volumeClaimTemplates:
+  - metadata:
+      name: mongo-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: standard-rwo
+      resources:
+        requests:
+          storage: 10Gi

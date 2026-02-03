@@ -2,7 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   annotations:
-    argocd.argoproj.io/sync-wave: "3" 
+
   name: mongo-volume-claim
   namespace: three-tier
 spec: 
