@@ -1,0 +1,197 @@
+pipeline {
+    agent any
+
+    environment {
+        // ===== GCP CONFIG =====
+        // Note: No CREDENTIALS_ID needed for Metadata auth if running on GCE/GKE with proper scopes
+        GOOGLE_CLOUD_PROJECT = credentials("gcp-project-id") // Replace with actual ID or keep as credential if preferred
+        REGION = "us-central1"
+        REPO   = "ankur"
+        
+        // ===== GIT CONFIG =====
+        GIT_USER_NAME = "ankur-06-2003"
+        GIT_USER_EMAIL = "ankuryadav8802@gmail.com"
+        GIT_REPO = "furniro-deployment"
+        
+        // ===== IMAGES =====
+        BACKEND_IMAGE  = "furniro-backend"
+        FRONTEND_IMAGE = "furniro-frontend"
+        // BEST PRACTICE: Use Git Short Hash for immutability + Build Number for ordering
+        IMAGE_TAG = "1.0.${BUILD_NUMBER}"
+
+        // ===== SECURITY =====
+        SCANNER_HOME = tool 'sonar-scanner'
+        GITHUB_TOKEN = credentials('github-token')
+        TOKEN_APP_NAME = "app-token" // Ensure this matches your GitHub App/Token user
+    }
+
+    stages {
+        // ================= CLEAN =================
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        // ================= CI REPO =================
+        stage('Checkout Application Repo') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/ankur-06-2003/furniro-ecommerce.git'
+            }
+        }
+
+        // ================= GCP AUTH =================
+        stage('Configure GCP & Docker') {
+            steps {
+                script {
+                    // BEST PRACTICE: Metadata Auth
+                    // We do NOT need 'withCredentials' or a JSON key here.
+                    // The 'gcloud' command automatically uses the VM's attached Service Account.
+                    sh '''
+                    echo "Checking attached Service Account..."
+                    gcloud auth list
+                    
+                    echo "Configuring Docker to use GCP credentials..."
+                    gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+                    '''
+                }
+            }
+        }
+
+        // ================= SECURITY SCANS =================
+        stage('Trivy Filesystem Scan') {
+            steps {
+                // Scan local files before building
+                // Exit code 0 means "report only" (don't break build on FS scan)
+                sh 'trivy fs --format table -o trivy-fs-report.html .'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonar-server') {
+                    sh '''
+                    ${SCANNER_HOME}/bin/sonar-scanner \
+                    -Dsonar.projectKey=furniro \
+                    -Dsonar.projectName=furniro \
+                    -Dsonar.qualitygate.wait=true
+                    '''
+                }
+            }
+        }
+        
+        // Note: 'waitForQualityGate' is often redundant if you use -Dsonar.qualitygate.wait=true above
+        // But keeping it if you prefer the separate step logic.
+        stage('Sonar Quality Gate') {
+            steps {
+                waitForQualityGate abortPipeline: true, credentialsId: 'Sonar-token'
+            }
+        }
+
+        // ================= BUILD =================
+        stage('Build Docker Images') {
+            environment {
+                DOCKER_BUILDKIT = '1' // Speed up builds
+            }
+            steps {
+                sh '''
+                docker build -t ${BACKEND_IMAGE}:latest ./backend
+                docker build -t ${FRONTEND_IMAGE}:latest ./frontend
+                '''
+            }
+        }
+
+        // ================= PUSH =================
+        stage('Push Images to Artifact Registry') {
+            steps {
+                sh '''
+                # Define full registry paths
+                BACKEND_URI="${REGION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${REPO}/${BACKEND_IMAGE}"
+                FRONTEND_URI="${REGION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${REPO}/${FRONTEND_IMAGE}"
+
+                # Tag and Push Backend
+                docker tag ${BACKEND_IMAGE}:latest $BACKEND_URI:${IMAGE_TAG}
+                docker push $BACKEND_URI:${IMAGE_TAG}
+
+                # Tag and Push Frontend
+                docker tag ${FRONTEND_IMAGE}:latest $FRONTEND_URI:${IMAGE_TAG}
+                docker push $FRONTEND_URI:${IMAGE_TAG}
+                '''
+            }
+        }
+
+        // ================= IMAGE SCAN =================
+        stage('Trivy Image Scan') {
+            steps {
+                // BEST PRACTICE: Fail pipeline on CRITICAL vulnerabilities
+                sh '''
+                BACKEND_URI="${REGION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${REPO}/${BACKEND_IMAGE}:${IMAGE_TAG}"
+                FRONTEND_URI="${REGION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${REPO}/${FRONTEND_IMAGE}:${IMAGE_TAG}"
+
+                # Scan Backend (Fail on CRITICAL)
+                trivy image --severity CRITICAL --exit-code 1 --ignore-unfixed $BACKEND_URI
+                
+                # Scan Frontend (Fail on CRITICAL)
+                trivy image --severity CRITICAL --exit-code 1 --ignore-unfixed $FRONTEND_URI
+                '''
+            }
+        }
+
+        // ================= CD REPO =================
+        stage('Checkout Deployment Repo') {
+            steps {
+                cleanWs() // Clean again to avoid git conflicts
+                git branch: 'main',
+                    url: 'https://github.com/ankur-06-2003/furniro-deployment.git'
+            }
+        }
+
+        // ================= UPDATE YAML =================
+        stage('Update Kubernetes Manifests') {
+            steps {
+                script {
+                    // Update image tags in YAML files
+                    sh """
+                    sed -i "s|image: .*${BACKEND_IMAGE}.*|image: ${REGION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${REPO}/${BACKEND_IMAGE}:${IMAGE_TAG}|" backend/deployment.yaml
+                    sed -i "s|image: .*${FRONTEND_IMAGE}.*|image: ${REGION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${REPO}/${FRONTEND_IMAGE}:${IMAGE_TAG}|" frontend/deployment.yaml
+                    """
+                }
+            }
+        }
+
+        // ================= COMMIT =================
+        stage('Commit & Push CD Changes') {
+            steps {
+                withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+                    sh """
+                    git config user.name "${GIT_USER_NAME}"
+                    git config user.email "${GIT_USER_EMAIL}"
+
+                    git add backend/deployment.yaml frontend/deployment.yaml
+
+                    if git diff --staged --quiet; then
+                        echo "No changes to commit"
+                    else
+                        git commit -m "CI: Update images to ${IMAGE_TAG}"
+                        git push https://${TOKEN_APP_NAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO}.git HEAD:main
+                    fi
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Cleanup images to save disk space
+            sh 'docker system prune -af --volumes || true'
+        }
+        success {
+            echo "Pipeline succeeded! New version: ${IMAGE_TAG}"
+        }
+        failure {
+            echo "Pipeline failed."
+        }
+    }
+}

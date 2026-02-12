@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: three-tier
+  # annotations:
+  #   argocd.argoproj.io/sync-wave: "2" 
+  labels:
+    role: frontend
+    env: production
+spec: 
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels: 
+      role: frontend
+  template:
+    metadata:
+      labels:
+        role: frontend
+    spec: 
+      # imagePullSecrets:
+      # - name:  gcp-registry-secret
+      serviceAccountName: frontend-sa
+      containers:
+      - name: frontend
+        image: us-central1-docker.pkg.dev/project-9a74d1a5-edac-4cb9-a0b/furniro/furniro-frontend:1.0.6
+        imagePullPolicy: IfNotPresent
+        env:
+          
+          - name: NEXT_PUBLIC_API_URL
+            valueFrom:
+              configMapKeyRef:
+                name: app-config
+                key: NEXT_PUBLIC_API_URL
+          - name: NEXT_PUBLIC_BASE_URL
+            valueFrom:
+              configMapKeyRef:
+                name: app-config
+                key: NEXT_PUBLIC_BASE_URL
+        
+        ports:
+        - containerPort: 3000
+          name: http
+        
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        
+        # securityContext:
+        #   runAsNonRoot: true
+        #   runAsUser: 1000
+        #   allowPrivilegeEscalation: false
+        #   readOnlyRootFilesystem: true
+        #   capabilities:
+        #     drop:
+        #       - ALL
+

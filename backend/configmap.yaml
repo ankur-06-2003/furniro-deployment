@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: three-tier   # change if needed
+data:
+  # MongoDB Connection String (without username/password if using Secret)
+  MONGODB_URI: "mongodb://furniro_admin:foruniro-admin-42032@mongodb-0.mongodb-svc:27017/furniro?authSource=admin"
+
+  # Backend Base URL
+  BACKEND_URL: "http://api-svc:8000"
+
+  # Frontend Public URL
+  FRONTEND_URL: "http://frontend-svc:3000"
+  NODE_ENV: "production"
+
+  NEXT_PUBLIC_API_URL: "http://api-svc:8000/api"
+  NEXT_PUBLIC_BASE_URL: "http://api-svc:3000"
