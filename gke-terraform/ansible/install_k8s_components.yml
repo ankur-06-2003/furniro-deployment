@@ -1,0 +1,63 @@
+- name: Install Kubernetes platform components (Production Ready)
+  hosts: furniro
+  connection: local
+  gather_facts: false
+  vars:
+    kubeconfig: "{{ lookup('env','KUBECONFIG') | default('~/.kube/config', true) }}"
+    # Secrets are provided via Ansible vars/extra-vars or environment variables.
+    # Prefer passing them securely (CI secrets or vault-less secret store).
+    argocd_admin_password: "{{ argocd_admin_password | default(lookup('env','ARGOCD_ADMIN_PASSWORD'), true) }}"
+    grafana_admin_password: "{{ grafana_admin_password | default(lookup('env','GRAFANA_ADMIN_PASSWORD'), true) }}"
+
+  tasks:
+    - name: Create Namespaces
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        name: "{{ item }}"
+        kind: Namespace
+        state: present
+      loop:
+        - argocd
+        - monitoring
+        - ingress-nginx
+
+    - name: Install NGINX Ingress Controller
+      community.kubernetes.helm:
+        kubeconfig: "{{ kubeconfig }}"
+        name: ingress-nginx
+        chart_ref: ingress-nginx/ingress-nginx
+        release_namespace: ingress-nginx
+        create_namespace: true
+        values:
+          controller:
+            service:
+              type: LoadBalancer
+            metrics:
+              enabled: true
+
+    - name: Install ArgoCD
+      community.kubernetes.helm:
+        kubeconfig: "{{ kubeconfig }}"
+        name: argo-cd
+        chart_ref: argo/argo-cd
+        release_namespace: argocd
+        values:
+          server:
+            service:
+              type: ClusterIP  # Use Ingress instead of a separate LB
+          configs:
+            secret:
+              # ArgoCD expects a bcrypt hash for the admin password
+              argocdServerAdminPassword: "{{ argocd_admin_password | password_hash('bcrypt') }}"
+
+    - name: Install Prometheus Stack
+      community.kubernetes.helm:
+        kubeconfig: "{{ kubeconfig }}"
+        name: prometheus-stack
+        chart_ref: prometheus-community/kube-prometheus-stack
+        release_namespace: monitoring
+        values:
+          grafana:
+            adminPassword: "{{ grafana_admin_password }}"
+            service:
+              type: ClusterIP # Use Ingress for production

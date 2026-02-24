@@ -1,0 +1,7 @@
+.DS_Store
+config.yaml
+database/.DS_Store
+database/pv.yaml
+database/pvc.yaml
+backend/.DS_Store
+backend/secrets.yaml
